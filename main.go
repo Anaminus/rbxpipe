@@ -171,7 +171,7 @@ var output = flag.String("o", "", "A file to write the results to. If unspecifie
 var studio = flag.String("studio", "", "A path to the studio executable. If unspecified, then the studio will be located automatically, assuming it has been installed.")
 var file = flag.String("file", "", "A Roblox place file to open with the studio.")
 var play = flag.Bool("play", false, "If given, the studio's `Play Solo` state will be mimicked by starting the RunService and inserting a character.")
-var timeout = flag.Duration("timeout", time.Duration(-1), "Terminates the studio process after the given duration (e.g. '30s' for 30 seconds). If less than 0, then the timeout is disabled.")
+var timeout = flag.Duration("timeout", time.Duration(30*time.Second), "Terminates the studio process after the given duration (e.g. '30s' for 30 seconds). If less than 0, then the timeout is disabled.")
 var filter = flag.String("filter", "oiwe", "Filters the output by message type. Each character includes messages of a certain type: 'o' for regular output, 'i' for info, 'w' for warnings, and 'e' for errors.")
 
 var filterMap = map[byte]byte{
