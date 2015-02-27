@@ -173,7 +173,7 @@ main(%s, loadstring(%s, "script"))
 var input = flag.String("i", "", "A Lua file that will be executed by the studio. If unspecified, then the standard input is read instead.")
 var output = flag.String("o", "", "A file to write the results to. If unspecified, then the output is written to the standard output.")
 var studio = flag.String("studio", "", "A path to the studio executable. If unspecified, then the studio will be located automatically, assuming it has been installed.")
-var file = flag.String("file", "", "A Roblox place file to open with the studio.")
+var place = flag.String("place", "", "A Roblox place file to open with the studio.")
 var play = flag.Bool("play", false, "If given, the studio's `Play Solo` state will be mimicked by starting the RunService and inserting a character.")
 var timeout = flag.Duration("timeout", time.Duration(30*time.Second), "Terminates the studio process after the given duration (e.g. '30s' for 30 seconds). If less than 0, then the timeout is disabled.")
 var filter = flag.String("filter", "oiwe", "Filters the output by message type. Each character includes messages of a certain type: 'o' for regular output, 'i' for info, 'w' for warnings, and 'e' for errors.")
@@ -281,15 +281,15 @@ func main() {
 		args = append(args, "-avatar")
 	}
 
-	if *file != "" {
+	if *place != "" {
 		var err error
-		*file, err = path.Abs(*file)
+		*place, err = path.Abs(*place)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "could not resolve absolute path of file:", err)
+			fmt.Fprintln(os.Stderr, "could not resolve absolute path of place file:", err)
 			return
 		}
 
-		args = append(args, "-fileLocation", *file)
+		args = append(args, "-fileLocation", *place)
 	}
 
 	var script []byte
