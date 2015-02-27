@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"encoding/xml"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	path "path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -29,12 +31,9 @@ func findStudio() string {
 // Roblox's API truncates null characters from strings anyway.
 //
 // When the test finishes, the log data is encoded in the following format: a
-// byte indicating if the main thread ran to completion (0) or if an error
-// occurred (1). If an error occurred, the remaining data is the error
-// message. If there was no error, then the format is the following: a 32-bit
-// unsigned integer N, indicating the number of messages; a byte array of
-// length N, each byte indicating the type of each message; a run of messages,
-// with each message terminated by a null character.
+// 32-bit unsigned integer N, indicating the number of messages; a byte array
+// of length N, each byte indicating the type of each message; a run of
+// messages, with each message terminated by a null character.
 //
 // A plugin with an ID of 0 is created via PluginManager.CreatePlugin. The
 // plugin's SetSetting method saves the encoded data under a specified key,
@@ -45,13 +44,13 @@ func findStudio() string {
 // unstable. So, to ensure the data is saved correctly, it is encoded in
 // base64.
 const scriptTemplate = `--[[%-53.53s]]
-local function main(key, test)
+local function main(key, test, err)
+	local wait = wait
 	local byte = string.byte
 	local char = string.char
-	local yield = coroutine.yield
 	local concat = table.concat
 
-	yield()
+	wait()
 
 	local plugin = PluginManager():CreatePlugin()
 	local testService = game:GetService('TestService')
@@ -133,27 +132,34 @@ local function main(key, test)
 	local messages = {}
 	local messageTypes = {}
 	local messagesLen = 0
-	game:GetService('LogService').MessageOut:connect(function(message, messageType)
+	local logConn = game:GetService('LogService').MessageOut:connect(function(message, messageType)
 		messagesLen = messagesLen + 1
 		messageTypes[messagesLen] = string.char(messageType.Value)
 		messages[messagesLen] = message .. '\0'
 	end)
 
-	local success, err = pcall(test)
-
-	yield()
-
-	local out
-	if not success then
-		out = {'\1', err}
+	local success
+	if err == nil then
+		success, err = pcall(test)
 	else
-		out = {'\0', uint32(messagesLen)}
-		for i = 1,messagesLen do
-			out[#out+1] = messageTypes[i]
-		end
-		for i = 1,messagesLen do
-			out[#out+1] = messages[i]
-		end
+		success = false
+	end
+
+	wait()
+	logConn:disconnect()
+
+	if not success then
+		messagesLen = messagesLen + 1
+		messageTypes[messagesLen] = string.char(Enum.MessageTypes.Error.Value)
+		messages[messagesLen] = err .. '\0'
+	end
+
+	local out = {uint32(messagesLen)}
+	for i = 1,messagesLen do
+		out[#out+1] = messageTypes[i]
+	end
+	for i = 1,messagesLen do
+		out[#out+1] = messages[i]
 	end
 
 	plugin:SetSetting(key, base64(concat(out)))
@@ -161,9 +167,7 @@ local function main(key, test)
 	testService:DoCommand('ShutdownClient')
 end
 
-main("%s", function()
-%s
-end)
+main(%s, loadstring(%s, "script"))
 `
 
 var input = flag.String("i", "", "A Lua file that will be executed by the studio. If unspecified, then the standard input is read instead.")
@@ -173,18 +177,94 @@ var file = flag.String("file", "", "A Roblox place file to open with the studio.
 var play = flag.Bool("play", false, "If given, the studio's `Play Solo` state will be mimicked by starting the RunService and inserting a character.")
 var timeout = flag.Duration("timeout", time.Duration(30*time.Second), "Terminates the studio process after the given duration (e.g. '30s' for 30 seconds). If less than 0, then the timeout is disabled.")
 var filter = flag.String("filter", "oiwe", "Filters the output by message type. Each character includes messages of a certain type: 'o' for regular output, 'i' for info, 'w' for warnings, and 'e' for errors.")
+var format = flag.String("format", "", "writes the output in a certain format. Acceptable formats are: 'json', 'xml'. These formats can be suffixed with 'i' to apply indentation. A blank format outputs the raw data.")
 
-var filterMap = map[byte]byte{
-	0: 'o',
-	1: 'i',
-	2: 'w',
-	3: 'e',
+type Type byte
+
+const (
+	TypeOutput  Type = 0
+	TypeInfo    Type = 1
+	TypeWarning Type = 2
+	TypeError   Type = 3
+)
+
+var typeStrings = map[Type]string{
+	TypeOutput:  "Output",
+	TypeInfo:    "Info",
+	TypeWarning: "Warning",
+	TypeError:   "Error",
+}
+
+func (t Type) String() string {
+	s, ok := typeStrings[t]
+	if !ok {
+		return "Unknown"
+	}
+	return s
+}
+
+func (t Type) Filter(f string) bool {
+	return strings.ContainsAny(strings.ToLower(t.String()[0:1]), strings.ToLower(f))
+}
+
+func (t Type) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + strings.ToLower(t.String()) + `"`), nil
+}
+
+type Message struct {
+	Type Type   `json:"type"`
+	Text string `json:"text"`
+}
+
+type Messages []Message
+
+func FormatLua(a []byte, num bool) (b []byte) {
+	if num {
+		b = make([]byte, len(a)*4+2)
+		b[0] = '"'
+		b[len(b)-1] = '"'
+		bb := b[1:]
+		for _, c := range a {
+			bb[0] = '\\'
+			s := strconv.FormatUint(uint64(c), 10)
+			copy(bb[1:3], bytes.Repeat([]byte{'0'}, 3-len(s)))
+			copy(bb[1+3-len(s):4], []byte(s))
+			bb = bb[4:]
+		}
+	} else {
+		a = bytes.Replace(a, []byte{'\r', '\n'}, []byte{'\n'}, -1)
+
+		count := len(a) + 2
+		for _, c := range a {
+			switch c {
+			case '\000':
+				count += 3
+			case '"', '\n', '\r', '\\':
+				count += 1
+			}
+		}
+
+		b = make([]byte, 0, count)
+		b = append(b, '"')
+		for _, c := range a {
+			switch c {
+			case '\000':
+				b = append(b, '\\', '0', '0', '0')
+			case '\r':
+				b = append(b, '\\', 'r')
+			case '"', '\n', '\\':
+				b = append(b, '\\', c)
+			default:
+				b = append(b, c)
+			}
+		}
+		b = append(b, '"')
+	}
+	return
 }
 
 func main() {
 	flag.Parse()
-
-	*filter = strings.ToLower(*filter)
 
 	if *studio == "" {
 		*studio = findStudio()
@@ -194,6 +274,7 @@ func main() {
 		}
 	}
 
+	// Build options
 	args := []string{"-testMode"}
 
 	if *play {
@@ -211,30 +292,29 @@ func main() {
 		args = append(args, "-fileLocation", *file)
 	}
 
-	var script string
+	var script []byte
 	if *input != "" {
-		s, err := ioutil.ReadFile(*input)
+		var err error
+		script, err = ioutil.ReadFile(*input)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "could not read input file:", err)
 			return
 		}
-
-		script = string(s)
 	} else {
-		s, err := ioutil.ReadAll(os.Stdin)
+		var err error
+		script, err = ioutil.ReadAll(os.Stdin)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "could not read standard input:", err)
 			return
 		}
-
-		script = string(s)
 	}
 
-	if script != "" {
-		key := "TestScript"
-		args = append(args, "-script", fmt.Sprintf(strings.Replace(scriptTemplate, "\n", " ", -1), key, key, script))
+	if len(script) > 0 {
+		key := []byte("RBXPIPE")
+		args = append(args, "-script", fmt.Sprintf(strings.Replace(scriptTemplate, "\n", " ", 0), FormatLua(key, false), FormatLua(key, false), FormatLua(script, true)))
 	}
 
+	// Run command
 	cmd := exec.Command(*studio, args...)
 
 	if err := cmd.Start(); err != nil {
@@ -247,8 +327,9 @@ func main() {
 		return
 	}
 
-	var data struct {
-		TestScript []byte
+	// Process output
+	var settings struct {
+		RBXPIPE []byte
 	}
 
 	f, err := os.Open(`C:\Users\admin\AppData\Local\Roblox\InstalledPlugins\0\settings.json`)
@@ -257,66 +338,79 @@ func main() {
 		return
 	}
 	jd := json.NewDecoder(f)
-	if err := jd.Decode(&data); err != nil {
+	if err := jd.Decode(&settings); err != nil {
 		f.Close()
 		fmt.Fprintln(os.Stderr, "error decoding output:", err)
 		return
 	}
 	f.Close()
 
-	o := data.TestScript
+	o := settings.RBXPIPE
 	if len(o) == 0 {
 		fmt.Fprintln(os.Stderr, "format error: data length is 0")
 		return
 	}
 
-	switch o[0] {
-	case 0:
-		if len(o) < 5 {
-			fmt.Fprintln(os.Stderr, "format error: data length does not accommodate array length")
-			return
-		}
-
-		o = o[1:]
-		messagesLen := int(binary.LittleEndian.Uint32(o[:4]))
-		o = o[4:]
-		if len(o) < messagesLen {
-			fmt.Fprintln(os.Stderr, "format error: data length does not accommodate message type array")
-			return
-		}
-
-		messageTypes := o[:messagesLen]
-		messagesRaw := o[messagesLen:]
-
-		messages := make([]string, 0, messagesLen)
-		for i := 0; len(messagesRaw) > 0; i++ {
-			n := bytes.IndexByte(messagesRaw, '\000')
-			if n < 0 {
-				break
-			}
-
-			if bytes.IndexByte([]byte(*filter), filterMap[messageTypes[i]]) > -1 {
-				messages = append(messages, string(messagesRaw[:n]))
-			}
-
-			messagesRaw = messagesRaw[n+1:]
-		}
-
-		data := []byte(strings.Join(messages, "\n"))
-		if *output != "" {
-			if err := ioutil.WriteFile(*output, data, 0666); err != nil {
-				fmt.Fprintln(os.Stderr, "could not write to output file:", err)
-				return
-			}
-		} else {
-			if _, err := os.Stdout.Write(data); err != nil {
-				fmt.Fprintln(os.Stderr, "could not write to stdout:", err)
-				return
-			}
-		}
-
-	case 1:
-		fmt.Fprintln(os.Stderr, "an error occurred in the main thread:\n", string(o[1:]))
+	if len(o) < 4 {
+		fmt.Fprintln(os.Stderr, "format error: data length does not accommodate array length")
 		return
+	}
+
+	messagesLen := int(binary.LittleEndian.Uint32(o[:4]))
+	o = o[4:]
+	if len(o) < messagesLen {
+		fmt.Fprintln(os.Stderr, "format error: data length does not accommodate message type array")
+		return
+	}
+
+	messageTypes := o[:messagesLen]
+	messagesRaw := o[messagesLen:]
+
+	messages := make(Messages, 0, messagesLen)
+	for i := 0; len(messagesRaw) > 0; i++ {
+		n := bytes.IndexByte(messagesRaw, '\000')
+		if n < 0 {
+			break
+		}
+
+		msg := Message{
+			Type: Type(messageTypes[i]),
+			Text: string(messagesRaw[:n]),
+		}
+
+		if msg.Type.Filter(*filter) {
+			messages = append(messages, msg)
+		}
+
+		messagesRaw = messagesRaw[n+1:]
+	}
+
+	var data []byte
+	switch *format {
+	default:
+		for _, msg := range messages {
+			data = append(data, []byte(msg.Text)...)
+			data = append(data, '\n')
+		}
+	case "json":
+		data, _ = json.Marshal(&messages)
+	case "jsoni":
+		data, _ = json.MarshalIndent(&messages, "", "\t")
+	case "xml":
+		data, _ = xml.Marshal(&messages)
+	case "xmli":
+		data, _ = xml.MarshalIndent(&messages, "", "\t")
+	}
+
+	if *output != "" {
+		if err := ioutil.WriteFile(*output, data, 0666); err != nil {
+			fmt.Fprintln(os.Stderr, "could not write to output file:", err)
+			return
+		}
+	} else {
+		if _, err := os.Stdout.Write(data); err != nil {
+			fmt.Fprintln(os.Stderr, "could not write to stdout:", err)
+			return
+		}
 	}
 }
