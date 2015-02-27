@@ -5,6 +5,9 @@ which can then be piped elsewhere.
 
 ```batch
 echo print(BrickColor.Green().Color) | rbxpipe > brickcolor.txt
+
+type brickcolor.txt
+0.156863, 0.498039, 0.278431
 ```
 
 ## Options
