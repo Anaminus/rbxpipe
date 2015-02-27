@@ -14,8 +14,6 @@ import (
 	"time"
 )
 
-// C:\Program Files (x86)\Roblox\Versions\version-829e90842df44a35>RobloxStudioBeta -testMode -avatar -fileLocation "C:\Place1.rbxl" -script "loadfile(\"http://www.roblox.com/game/visit.ashx?universeId=0\")() wait() print('TEST') Instance.new('Part',Workspace) wait(3) game:GetService('TestService'):DoCommand('ShutdownClient')"
-
 func findStudio() string {
 	//	const allUsers = path.Clean("C:/Program Files (x86)/Roblox/Versions")
 	//	const currentUser = path.Join(os.Getenv("LOCALAPPDATA"), "Roblox/Versions")
