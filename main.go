@@ -340,7 +340,7 @@ func main() {
 		RBXPIPE []byte
 	}
 
-	f, err := os.Open(`C:\Users\admin\AppData\Local\Roblox\InstalledPlugins\0\settings.json`)
+	f, err := os.Open(PluginSettings)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error reading output:", err)
 		return
