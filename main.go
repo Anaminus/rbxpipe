@@ -68,7 +68,7 @@ func FindStudio() string {
 // unstable. So, to ensure the data is saved correctly, it is encoded in
 // base64.
 const scriptTemplate = `--[[%-53.53s]]
-local function main(key, test, err)
+local function main(key, playsolo, test, err)
 	local wait = wait
 	local byte = string.byte
 	local char = string.char
@@ -162,6 +162,10 @@ local function main(key, test, err)
 		messages[messagesLen] = message .. '\0'
 	end)
 
+	if playsolo and #playsolo > 0 then
+		loadfile(playsolo)()
+	end
+
 	local success
 	if err == nil then
 		success, err = pcall(test)
@@ -191,14 +195,14 @@ local function main(key, test, err)
 	testService:DoCommand('ShutdownClient')
 end
 
-main(%s, loadstring(%s, "script"))
+main(%s, %s, loadstring(%s, "script"))
 `
 
 var input = flag.String("i", "", "A Lua file that will be executed by the studio. If unspecified, then the standard input is read instead.")
 var output = flag.String("o", "", "A file to write the results to. If unspecified, then the output is written to the standard output.")
 var studio = flag.String("studio", "", "A path to the studio executable. If unspecified, then the studio will be located automatically, assuming it has been installed.")
 var place = flag.String("place", "", "A Roblox place file to open with the studio.")
-var play = flag.Bool("play", false, "If given, the studio's `Play Solo` state will be mimicked by starting the RunService and inserting a character.")
+var play = flag.Bool("play", false, "If given, the studio will run in `Play Solo` mode, which starts the RunService and inserts a character.")
 var timeout = flag.Duration("timeout", time.Duration(30*time.Second), "Terminates the studio process after the given duration (e.g. '30s' for 30 seconds). If less than 0, then the timeout is disabled.")
 var filter = flag.String("filter", "oiwe", "Filters the output by message type. Each character includes messages of a certain type: 'o' for regular output, 'i' for info, 'w' for warnings, and 'e' for errors.")
 var format = flag.String("format", "", "writes the output in a certain format. Acceptable formats are: 'json', 'xml'. These formats can be suffixed with 'i' to apply indentation. A blank format outputs the raw data.")
@@ -374,9 +378,24 @@ func main() {
 		}
 	}
 
+	// Quirk: LoadingScript runs depending on whether the script option
+	// contains the string "visit.ashx". So, instead of including the URL in
+	// the template, it will be injected depending on whether or not play-solo
+	// is enabled.
+	var visitScript []byte
+	if *play {
+		visitScript = []byte(`http://www.roblox.com/game/visit.ashx?universeId=0`)
+	}
+
 	if len(script) > 0 {
 		key := []byte("RBXPIPE")
-		args = append(args, "-script", fmt.Sprintf(strings.Replace(scriptTemplate, "\n", " ", 0), FormatLua(key, false), FormatLua(key, false), FormatLua(script, true)))
+		args = append(args, "-script", fmt.Sprintf(
+			strings.Replace(scriptTemplate, "\n", " ", 0),
+			FormatLua(key, false),
+			FormatLua(key, false),
+			FormatLua(visitScript, false),
+			FormatLua(script, true)),
+		)
 	}
 
 	// Run command
