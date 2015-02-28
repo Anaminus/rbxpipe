@@ -12,6 +12,24 @@ type brickcolor.txt
 
 ## Options
 
+Flags can have any of the following syntax:
+```
+-flag
+-flag=x
+-flag x
+```
+One or two minus signs may be used; they are equivalent. The last form is not
+permitted for boolean flags because the meaning of the command `cmd -x *` will
+change if there is a file called `0`, `false`, etc. You must use the
+-flag=false form to turn off a boolean flag.
+
+Flag parsing stops just before the first non-flag argument (`-` is a non-flag
+argument) or after the terminator `--`. Supplying an unknown flag displays a
+usage message.
+
+More information on how flags are parsed can be found here:
+http://golang.org/pkg/flag/
+
 Option     | Description
 -----------|------------
 `-i`       | Specifies a Lua file to be executed. If unspecified, then data will be read from the standard input instead.
