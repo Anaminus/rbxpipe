@@ -36,5 +36,5 @@ func programFiles() string {
 	if _, err := os.Stat(programFiles); err != nil {
 		programFiles = `C:\Program Files`
 	}
-	return programFIles
+	return programFiles
 }
