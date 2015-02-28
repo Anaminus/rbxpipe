@@ -387,8 +387,21 @@ func main() {
 		return
 	}
 
-	if err := cmd.Wait(); err != nil {
-		fmt.Fprintln(os.Stderr, "error waiting process:", err)
+	finished := make(chan error, 1)
+
+	go func() {
+		finished <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-finished:
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error waiting on process:", err)
+			return
+		}
+	case <-time.After(*timeout):
+		cmd.Process.Kill()
+		fmt.Fprintf(os.Stderr, "process timed out after %s\n", (*timeout).String())
 		return
 	}
 
