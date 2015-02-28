@@ -16,10 +16,34 @@ import (
 	"time"
 )
 
-func findStudio() string {
-	//	const allUsers = path.Clean("C:/Program Files (x86)/Roblox/Versions")
-	//	const currentUser = path.Join(os.Getenv("LOCALAPPDATA"), "Roblox/Versions")
+func findBuild(dirname string) string {
+	if _, err := os.Stat(dirname); err != nil {
+		return ""
+	}
+
+	files, err := ioutil.ReadDir(dirname)
+	if err != nil {
+		return ""
+	}
+	for _, file := range files {
+		if file.IsDir() {
+			for _, exe := range Executables {
+				exepath := path.Join(dirname, file.Name(), exe)
+				if _, err := os.Stat(exepath); err == nil {
+					return exepath
+				}
+			}
+		}
+	}
 	return ""
+}
+
+func FindStudio() string {
+	build := findBuild(AllUsers)
+	if build == "" {
+		return findBuild(CurrentUser)
+	}
+	return build
 }
 
 // Input is received via the studio's -script option, which can run scripts of
@@ -267,7 +291,7 @@ func main() {
 	flag.Parse()
 
 	if *studio == "" {
-		*studio = findStudio()
+		*studio = FindStudio()
 		if *studio == "" {
 			fmt.Fprintln(os.Stderr, "studio location must be provided (-studio option)")
 			return
