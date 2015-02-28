@@ -174,7 +174,7 @@ local function main(key, test, err)
 
 	if not success then
 		messagesLen = messagesLen + 1
-		messageTypes[messagesLen] = string.char(Enum.MessageTypes.Error.Value)
+		messageTypes[messagesLen] = string.char(Enum.MessageType.MessageError.Value)
 		messages[messagesLen] = err .. '\0'
 	end
 
