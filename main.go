@@ -390,7 +390,7 @@ func main() {
 	if len(script) > 0 {
 		key := []byte("RBXPIPE")
 		args = append(args, "-script", fmt.Sprintf(
-			strings.Replace(scriptTemplate, "\n", " ", 0),
+			scriptTemplate,
 			FormatLua(key, false),
 			FormatLua(key, false),
 			FormatLua(visitScript, false),
