@@ -293,7 +293,7 @@ func main() {
 	if *studio == "" {
 		*studio = FindStudio()
 		if *studio == "" {
-			fmt.Fprintln(os.Stderr, "studio location must be provided (-studio option)")
+			fmt.Fprintln(os.Stderr, "could not locate studio executable (use -studio option to specify location)")
 			return
 		}
 	}
