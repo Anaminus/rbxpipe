@@ -289,6 +289,14 @@ func main() {
 			return
 		}
 
+		if _, err := os.Stat(*place); os.IsNotExist(err) {
+			fmt.Fprintln(os.Stderr, "could not open place file: file does not exist")
+			return
+		} else if os.IsPermission(err) {
+			fmt.Fprintln(os.Stderr, "could not open place file: permission is denied")
+			return
+		}
+
 		args = append(args, "-fileLocation", *place)
 	}
 
