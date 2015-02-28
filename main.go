@@ -240,7 +240,40 @@ type Message struct {
 	Text string `json:"text"`
 }
 
+func (m Message) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	start.Name = xml.Name{
+		Local: "message",
+		Space: "",
+	}
+	start.Attr = append(start.Attr, xml.Attr{
+		Name: xml.Name{
+			Local: "type",
+			Space: "",
+		},
+		Value: strings.ToLower(m.Type.String()),
+	})
+	e.EncodeToken(start)
+	e.EncodeToken(xml.CharData(m.Text))
+	e.EncodeToken(start.End())
+	return nil
+}
+
 type Messages []Message
+
+func (m Messages) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	start.Name = xml.Name{
+		Local: "messages",
+		Space: "",
+	}
+
+	e.EncodeToken(start)
+	for _, msg := range m {
+		e.EncodeElement(msg, start)
+	}
+	e.EncodeToken(start.End())
+
+	return nil
+}
 
 func FormatLua(a []byte, num bool) (b []byte) {
 	if num {
