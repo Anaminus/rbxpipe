@@ -47,10 +47,9 @@ To install rbxpipe from source to `$GOPATH/bin`:
 
 1. [Install Go](http://golang.org/doc/install)
 2. To run Go commands, make sure [Git](http://git-scm.com/downloads) is installed.
-3. Using a shell that runs git (e.g. Git Bash), run the following commands:
+3. Using a shell that runs git (e.g. Git Bash), run the following command:
 ```sh
 go get github.com/anaminus/rbxpipe
-go install github.com/anaminus/rbxpipe
 ```
 
 ## Releases
